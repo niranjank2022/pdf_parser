@@ -1,1 +1,4 @@
 .idea/
+bin/
+file_dump/
+output_excel/

@@ -1,0 +1,3 @@
+2fd05c15 Boundaries H.pdf
+This file renders "s. " instead of "B. ". So, for this file alone, we have to change the literal in the code
+(i.e change the "B." in regex to "s.")
