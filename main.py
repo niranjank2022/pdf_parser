@@ -1,10 +1,11 @@
 import collections
-from pathlib import Path
-
+import os
+import re
 import openpyxl
 from pdfminer.high_level import extract_text
-import re
-from openpyxl import Workbook
+from pathlib import Path
+import pathlib
+from playsound import playsound
 
 
 def get_path():
@@ -24,19 +25,59 @@ def get_path():
     return input_path, output_path
 
 
-def extract_data(input_path):
+def extract_data(input_path, output_path):
     path = Path(input_path)
     files = sorted(path.glob("*.pdf"))
-    wb = openpyxl.load_workbook("test/CB SAT RW Question Bank.xlsx")
+    wb = openpyxl.load_workbook(output_path)
     sheet = wb.active
+    completed = set()
+    for row in sheet.iter_rows(values_only=True):
+        completed.add(row[12])
 
     for file in files:
+        if file.name in completed:
+            continue
+        print(file.name)
+        # try:
         text = extract_text(file)
-        d = extract_data_from_text(text)
-        d.append(file.name)
-        sheet.append(d)
+        data = extract_data_from_text(text)
+        data.append(file.name)
+        sheet.append(data)
+        # except:
+        #     print("Unable to parse " + file.name)
 
-    wb.save("test/CB SAT RW Question Bank.xlsx")
+        wb.save(output_path)
+
+    # playsound(r"bin\alert.wav")
+
+
+def refactor_id(text, data):
+    if 'O' in data['q-id'] or '0' in data['q-id']:
+        data['q-id'] = data['q-id'].replace('O', '0')
+        combinations = generate_combo(data['q-id'])
+        for seq in combinations:
+            if seq != data['q-id']:
+                text = text.replace(seq, data['q-id'])
+
+    return text
+
+
+def generate_combo(txt):
+    indices = []
+    i = 0
+    while i < len(txt) and '0' in txt[i:]:
+        i = txt.index('0', i)
+        indices.append(i)
+        i += 1
+
+    comb = [txt]
+    for i in range(len(indices)):
+        for j in range(len(comb)):
+            e = comb.pop()
+            comb.append(e[:indices[i]] + '0' + e[indices[i] + 1:])
+            comb.append(e[:indices[i]] + 'O' + e[indices[i] + 1:])
+
+    return comb
 
 
 def extract_data_from_text(text):
@@ -45,38 +86,53 @@ def extract_data_from_text(text):
     lines = text.strip().split("\n\n")
     text = "\n".join(lines)
 
-    re_text = text.replace("\n", "###")
-
-    print(text + "%%%%%%%%%%%%%%\n", re_text)
-
     data['q-id'] = lines[0].split()[-1]
-    data['domain'] = lines[8]
-    data['skill'] = lines[9]
-    data['difficulty'] = lines[-1].split()[-1]
+    text = refactor_id(text, data)
+    re_text = text.replace("\n", "###")
+    print(text)
+    print(re_text)
 
-    data['question'] = re.findall(f"{'ID: ' + data['q-id']}(.*?)A\\.", re_text)[0]
-    data['prompt'] = "Which " + re.findall("Which (.*?)\\?", data['question'])[0].replace('###', ' ') + "?"
-    data['question'] = re.findall("(.*?)Which", data['question'])[0]
-    data['question'] = data['question'].replace('###', '\n').strip()
-    data['choice-a'] = re.findall("A\\. (.*?)###", re_text)[0].strip()
-    data['choice-b'] = re.findall("B\\. (.*?)###", re_text)[0].strip()
-    data['choice-c'] = re.findall("C\\. (.*?)###", re_text)[0].strip()
-    data['choice-d'] = re.findall("D\\. (.*?)###", re_text)[0].strip()
+    data['domain'] = lines[8].replace("\n", " ")
+    data['skill'] = lines[9].replace("\n", " ")
+
+    data['difficulty'] = lines[-1].split()[-1]
+    q = re.findall(f"ID:(.*?)###A\\.", re_text)[0]
+    q = q.split("###")[1:]
+
+    data['prompt'] = q[-1].strip()
+    data['question'] = "\n".join(q[:-1]).strip().replace("###", "\n").strip()
+    data['choice-a'] = re.findall("###A\\.(.*?)###B\\.", re_text)[0].replace("###", "\n").strip()
+    try:
+        data['choice-b'] = re.findall("###B\\.(.*?)###C\\.", re_text)[0].replace("###", "\n").strip()
+    except:
+        data['choice-b'] = re.findall("###B\\.(.*?)### *C\\.", re_text)[0].replace("###", "\n").strip()
+    try:
+        data['choice-c'] = re.findall("###C\\.(.*?)###D\\.", re_text)[0].replace("###", "\n").strip()
+    except:
+        data['choice-c'] = re.findall("### *C\\.(.*?)###D\\.", re_text)[0].replace("###", "\n").strip()
+    try:
+        data['choice-d'] = re.findall("###D\\.(.*?)###ID:", re_text)[0].replace("###", "\n").strip()
+    except:
+        data['choice-d'] = re.findall("### *D\\.(.*?)###ID:", re_text)[0].replace("###", "\n").strip()
+
     data['answer'] = re.findall("Correct Answer: (.*?)###", re_text)[0].strip()
-    data['rationale'] = re.findall("Rationale(.*?)" + lines[-1], re_text)[0].replace("###", "\n").strip()
+    try:
+        data['rationale'] = re.findall("Rationale(.*?)" + lines[-1], re_text)[0].replace("###", "\n").strip()
+    except:
+        re_text += "&&&"
+        data['rationale'] = re.findall("Rationale(.*?)&&&", re_text)[0].replace("###", "\n").strip()
 
     res = []
     for key in (
             'q-id', 'domain', 'skill', 'difficulty', 'question', 'prompt', 'choice-a', 'choice-b', 'choice-c',
             'choice-d',
             'answer', 'rationale'):
+        if data[key] == '':
+            print(key)
+            raise ValueError
         res.append(data[key])
 
     return res
-
-
-def write_data_to_excel_sheet(data):
-    ...
 
 
 def remove_latin_ligatures(text):
@@ -85,27 +141,36 @@ def remove_latin_ligatures(text):
         'ĳ': 'ij', 'Œ': 'OE', 'œ': 'oe'
     }
     s = ""
-    c = collections.Counter(text)
     for ch in text:
-        if ord(ch) == 0 or ord(ch) == 160:
+        if ord(ch) == 0 or ord(ch) == 160 or ord(ch) == 12:
             s += ' '
             continue
         s += liga.get(ch, ch)
 
-    t = collections.Counter(s)
-
-    for k in c:
-        if not k.isalnum():
-            print("(", c[k], f"'{k}-{ord(k)}'", ")", end=' ')
-    print("8888888888888")
-    for k in t:
-        if not k.isalnum():
-            print("(", t[k], f"'{k}-{ord(k)}'", ")", end=' ')
-
     return s
 
 
+def segregate_failed_files(xlsx_path):
+    wb = openpyxl.load_workbook(output_path)
+    sheet = wb.active
+    failed = []
+    for row in sheet.iter_rows(values_only=True):
+        for val in row:
+            if val is None:
+                failed.append(row[-1])
+                path = pathlib.Path(row[-1]).absolute()
+                if path.exists():
+                    parts = list(path.parts[:-1]) + ['failed', row[-1]]
+                    new_path = Path(*parts)
+                    parts[-2] = 'file_dump'
+                    path = Path(*parts)
+                    os.rename(path, new_path)
+                break
+    return failed
+
+
 if __name__ == '__main__':
-    # path = get_path()
-    path = "C:\\Users\\Niranjan\\CodingWorld\\freelance_work\\pdf_parser\\test\\samples"
-    extract_data(path)
+    input_path = "file_dump/"
+    output_path = "output_excel/CB SAT RW Question Bank.xlsx"
+    extract_data(input_path, output_path)
+    # segregate_failed_files(output_path)
