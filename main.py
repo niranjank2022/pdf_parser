@@ -35,6 +35,7 @@ def extract_data(input_path, output_path):
     for file in files:
         if file.name in completed:
             continue
+
         # print(file.name)
         try:
             text = extract_text(file)
@@ -85,6 +86,7 @@ def extract_data_from_text(text):
     data['q-id'] = lines[0].split()[-1]
     text = refactor_id(text, data)
     re_text = text.replace("\n", "###")
+
     # print(text)
     # print(re_text)
 
@@ -92,6 +94,7 @@ def extract_data_from_text(text):
     data['skill'] = lines[9].replace("\n", " ")
 
     data['difficulty'] = {1: "Easy", 2: "Medium", 3: "Hard"}[re_text.count("■")]
+
     q = re.findall(f"ID:(.*?)###A\\.", re_text)[0]
     q = q.split("###")[1:]
 
