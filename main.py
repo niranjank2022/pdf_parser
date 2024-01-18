@@ -1,11 +1,9 @@
-import collections
 import os
 import re
 import openpyxl
 from pdfminer.high_level import extract_text
 from pathlib import Path
 import pathlib
-from playsound import playsound
 
 
 def get_path():
@@ -37,18 +35,17 @@ def extract_data(input_path, output_path):
     for file in files:
         if file.name in completed:
             continue
-        print(file.name)
-        # try:
-        text = extract_text(file)
-        data = extract_data_from_text(text)
-        data.append(file.name)
-        sheet.append(data)
-        # except:
-        #     print("Unable to parse " + file.name)
+
+        # print(file.name)
+        try:
+            text = extract_text(file)
+            data = extract_data_from_text(text)
+            data.append(file.name)
+            sheet.append(data)
+        except:
+            print("Unable to parse " + file.name)
 
         wb.save(output_path)
-
-    # playsound(r"bin\alert.wav")
 
 
 def refactor_id(text, data):
@@ -89,13 +86,15 @@ def extract_data_from_text(text):
     data['q-id'] = lines[0].split()[-1]
     text = refactor_id(text, data)
     re_text = text.replace("\n", "###")
-    print(text)
-    print(re_text)
+
+    # print(text)
+    # print(re_text)
 
     data['domain'] = lines[8].replace("\n", " ")
     data['skill'] = lines[9].replace("\n", " ")
 
-    data['difficulty'] = lines[-1].split()[-1]
+    data['difficulty'] = {1: "Easy", 2: "Medium", 3: "Hard"}[re_text.count("■")]
+
     q = re.findall(f"ID:(.*?)###A\\.", re_text)[0]
     q = q.split("###")[1:]
 
